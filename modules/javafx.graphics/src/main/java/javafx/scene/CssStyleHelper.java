@@ -521,9 +521,9 @@ final class CssStyleHelper {
 
     boolean pseudoClassStateChanged(PseudoClass pseudoClass) {
         boolean shouldTransition = triggerStates.contains(pseudoClass);
-        //if (shouldTransition) {
+        if (shouldTransition) {
             invalidatePseudoClassTransitionState();
-        //}
+        }
         return shouldTransition;
     }
 
@@ -617,7 +617,7 @@ final class CssStyleHelper {
         if (transitionStateInvalid) {
             updateTransitionStates();
         }
-        if (transitionStates == null || true/*|| parentChanged */) {
+        if (transitionStates == null/*|| parentChanged */) {
             Node curr = node.getParent();
 
             while (curr != null && curr.styleHelper == null) {
@@ -634,10 +634,11 @@ final class CssStyleHelper {
                 }
             } else {
                 if (node.styleHelper != null) {
-                    return new PseudoClassState[]{node.styleHelper.getUpdatedTransitionState()};
+                    transitionStates = new PseudoClassState[]{node.styleHelper.getUpdatedTransitionState()};
                 }
-                transitionStates = new PseudoClassState[0];
-                return transitionStates;
+                else {
+                    transitionStates = new PseudoClassState[0];
+                }
             }
         }
         return transitionStates;
@@ -649,7 +650,7 @@ final class CssStyleHelper {
             while (curr != null) {
                 if (curr.styleHelper != null) {
                     if (curr.styleHelper.transitionStateInvalid) {
-                        getUpdatedTransitionState();
+                        curr.styleHelper.getUpdatedTransitionState();
                         curr.styleHelper.transitionStateInvalid = false;
                     } else {
                         return;
