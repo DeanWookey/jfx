@@ -517,6 +517,7 @@ final class CssStyleHelper {
      * matched foo:blah bar { } is lost.
      */
     // TODO: this should work on Styleable, not Node
+    Set<PseudoClass>[] retainedStates;
     private Set<PseudoClass>[] getTransitionStates(final Node node) {
 
         // if cacheContainer is null, then CSS just doesn't apply to this node
@@ -540,7 +541,9 @@ final class CssStyleHelper {
         // .foo:hover { -fx-fill: red; } then only the hover state matters
         // but the transtion state could be [hover, focused]
         //
-        final Set<PseudoClass>[] retainedStates = new PseudoClassState[depth];
+        if (retainedStates == null || retainedStates.length < depth) {
+        retainedStates = new PseudoClassState[depth];
+        }
 
         //
         // Note Well: The array runs from leaf to root. That is,
@@ -555,11 +558,20 @@ final class CssStyleHelper {
             final CssStyleHelper helper = (parent instanceof Node) ? parent.styleHelper : null;
             if (helper != null) {
                 final Set<PseudoClass> pseudoClassState = parent.pseudoClassStates;
-                retainedStates[count] = new PseudoClassState();
+                if (retainedStates[count]== null) {
+                    retainedStates[count] = new PseudoClassState();
+                }
+                else {
+                    retainedStates[count].clear();
+                }
+                //retainedStates[count] = new PseudoClassState();
                 retainedStates[count].addAll(pseudoClassState);
                 // retainAll method takes the intersection of pseudoClassState and helper.triggerStates
                 retainedStates[count].retainAll(helper.triggerStates);
                 count += 1;
+            }
+            else {
+                
             }
             parent = parent.getParent();
         }

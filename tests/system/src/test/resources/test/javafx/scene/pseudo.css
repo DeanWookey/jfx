@@ -1,0 +1,7 @@
+.changing {
+    -fx-border-width:0px;
+}
+
+:root .changing {
+    -fx-border-color:red;
+}
