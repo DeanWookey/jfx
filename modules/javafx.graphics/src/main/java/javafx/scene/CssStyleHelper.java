@@ -568,7 +568,6 @@ final class CssStyleHelper {
                     Node child = children.get(n);
                     if (child.styleHelper != null) {
                         child.styleHelper.invalidatePseudoClassTransitionTree(child);
-                        child.styleHelper.transitionTreeInvalid = true;
                     } else {
                         //go down until we find another node which has a styleHelper
                         invalidatePseudoClassTransitionTree(child);
