@@ -159,7 +159,7 @@ public class PseudoClassTimerTest {
                 Platform.requestNextPulse();
             });
         });
-        Thread.sleep(10000);
+        Thread.sleep(100000);
             //StringBuilder sb = new StringBuilder();
            // for (int i = 0; i < time.size(); i++) {
            //     sb.append(time.get(i)).append(" ");

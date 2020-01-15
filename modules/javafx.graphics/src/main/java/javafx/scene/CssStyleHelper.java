@@ -426,6 +426,18 @@ final class CssStyleHelper {
 
         }
 
+        StyleCacheEntry.Key reusableKey = new StyleCacheEntry.Key();
+
+        private void addFontSizeCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font, CalculatedValue calculatedValue) {
+            StyleCacheEntry.Key key = reusableKey.newImmutableKey(pseudoClassStates, font);
+            fontSizeCache.put(key, calculatedValue);
+        }
+
+        private CalculatedValue getFontSizeCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            reusableKey.setKey(pseudoClassStates, font);
+            return fontSizeCache.get(reusableKey);
+        }
+
         private StyleMap getStyleMap(Styleable styleable) {
             if (styleable != null) {
                 SubScene subScene = (styleable instanceof Node) ? ((Node) styleable).getSubScene() : null;
@@ -530,19 +542,22 @@ final class CssStyleHelper {
      * because we only set a node to valid when its parent is valid.
      */
     private void invalidatePseudoClassTransitionState() {
-        invalidatePseudoClassTransitionState(this.node);
+        if (transitionStateInvalid == false) {
+            invalidatePseudoClassTransitionState(this.node);
+            transitionStateInvalid = true;
+        }
     }
 
     private void invalidatePseudoClassTransitionState(Node nodeToInvalidate) {
-        if (transitionStateInvalid == false) {
-            transitionStateInvalid = true;
-            if (nodeToInvalidate instanceof Parent) {
-                for (Node n : ((Parent) node).getChildren()) {
-                    if (n.styleHelper != null) {
-                        n.styleHelper.invalidatePseudoClassTransitionState();
-                    } else {
-                        invalidatePseudoClassTransitionState(n);
-                    }
+        if (nodeToInvalidate instanceof Parent) {
+            List<Node> children = ((Parent) nodeToInvalidate).getChildren();
+            for (int n = 0, nMax = children.size(); n < nMax; n++) {
+                Node child = children.get(n);
+                if (child.styleHelper != null) {
+                    child.styleHelper.invalidatePseudoClassTransitionState();
+                } else {
+                    //go down until we find another node which has a styleHelper
+                    invalidatePseudoClassTransitionState(child);
                 }
             }
         }
@@ -632,8 +647,7 @@ final class CssStyleHelper {
             } else {
                 if (node.styleHelper != null) {
                     transitionStates = new PseudoClassState[]{node.styleHelper.getUpdatedTransitionState()};
-                }
-                else {
+                } else {
                     transitionStates = new PseudoClassState[0];
                 }
             }
@@ -703,8 +717,8 @@ final class CssStyleHelper {
 
         final Set<PseudoClass>[] transitionStates = getTransitionStates();
 
-        final StyleCacheEntry.Key fontCacheKey = new StyleCacheEntry.Key(transitionStates, Font.getDefault());
-        CalculatedValue cachedFont = cacheContainer.fontSizeCache.get(fontCacheKey);
+        //final StyleCacheEntry.Key fontCacheKey = new StyleCacheEntry.Key(transitionStates, Font.getDefault());
+        CalculatedValue cachedFont = cacheContainer.getFontSizeCacheEntry(transitionStates, Font.getDefault());
 
         if (cachedFont == null) {
 
@@ -716,22 +730,21 @@ final class CssStyleHelper {
             if (cachedFont == null) {
                 cachedFont = new CalculatedValue(Font.getDefault(), null, false);
             }
-
-            cacheContainer.fontSizeCache.put(fontCacheKey, cachedFont);
+            cacheContainer.addFontSizeCacheEntry(transitionStates, Font.getDefault(), cachedFont);
 
         }
 
         final Font fontForRelativeSizes = (Font) cachedFont.getValue();
 
-        final StyleCacheEntry.Key cacheEntryKey = new StyleCacheEntry.Key(transitionStates, fontForRelativeSizes);
-        StyleCacheEntry cacheEntry = sharedCache.getStyleCacheEntry(cacheEntryKey);
+        //final StyleCacheEntry.Key cacheEntryKey = new StyleCacheEntry.Key(transitionStates, fontForRelativeSizes);
+        StyleCacheEntry cacheEntry = sharedCache.getStyleCacheEntry(transitionStates, fontForRelativeSizes);
 
         // if the cacheEntry already exists, take the fastpath
         final boolean fastpath = cacheEntry != null;
 
         if (cacheEntry == null) {
             cacheEntry = new StyleCacheEntry();
-            sharedCache.addStyleCacheEntry(cacheEntryKey, cacheEntry);
+            sharedCache.addStyleCacheEntry(transitionStates, fontForRelativeSizes, cacheEntry);
         }
 
         final List<CssMetaData<? extends Styleable, ?>> styleables = node.getCssMetaData();
@@ -1670,8 +1683,8 @@ final class CssStyleHelper {
                     && parentCacheContainer.fontSizeCache.isEmpty() == false) {
 
                 Set<PseudoClass>[] transitionStates = parentHelper.getTransitionStates();
-                StyleCacheEntry.Key parentCacheEntryKey = new StyleCacheEntry.Key(transitionStates, Font.getDefault());
-                cachedFont = parentCacheContainer.fontSizeCache.get(parentCacheEntryKey);
+                //StyleCacheEntry.Key parentCacheEntryKey = new StyleCacheEntry.Key(transitionStates, Font.getDefault());
+                cachedFont = parentCacheContainer.getFontSizeCacheEntry(transitionStates, Font.getDefault());
             }
 
             if (cachedFont == null) {
