@@ -43,7 +43,7 @@ public final class StyleCacheEntry {
     public CalculatedValue get(String property) {
 
         CalculatedValue cv = null;
-        if (calculatedValues != null && ! calculatedValues.isEmpty()) {
+        if (calculatedValues != null && !calculatedValues.isEmpty()) {
             cv = calculatedValues.get(property);
         }
         return cv;
@@ -60,28 +60,71 @@ public final class StyleCacheEntry {
 
     public final static class Key {
 
-        private final Set<PseudoClass>[] pseudoClassStates;
-        private final double fontSize;
+        private Set<PseudoClass>[] pseudoClassStates;
+        private double fontSize;
         private int hash = Integer.MIN_VALUE;
+        private boolean immutable;
 
-        public Key(Set<PseudoClass>[] pseudoClassStates, Font font) {
-
-            this.pseudoClassStates = new Set[pseudoClassStates.length];
-            for (int n=0; n<pseudoClassStates.length; n++) {
-                this.pseudoClassStates[n] = new PseudoClassState();
-                this.pseudoClassStates[n].addAll(pseudoClassStates[n]);
-            }
-            this.fontSize = font != null ? font.getSize() : Font.getDefault().getSize();
-
+        public Key() {
+            pseudoClassStates = new Set[0];
+            this.fontSize = Font.getDefault().getSize();
         }
 
-        @Override public String toString() {
+        public Key(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            this.pseudoClassStates = pseudoClassStates;
+            this.fontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+            immutable = true;
+        }
+
+        public Key(Set<PseudoClass>[] pseudoClassStates, double fontSize) {
+            this.pseudoClassStates = pseudoClassStates;
+            this.fontSize = fontSize;
+            immutable = true;
+        }
+
+        public void setKey(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            if (!immutable) {
+                this.pseudoClassStates = pseudoClassStates;
+                this.fontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+                hash = Integer.MIN_VALUE;
+            }
+        }
+
+        public void immutable() {
+            if (!immutable) {
+                Set<PseudoClass>[] immutablePseudoClassStates = new Set[pseudoClassStates.length];
+                for (int n = 0; n < pseudoClassStates.length; n++) {
+                    immutablePseudoClassStates[n] = new PseudoClassState();
+                    immutablePseudoClassStates[n].addAll(pseudoClassStates[n]);
+                }
+                pseudoClassStates = immutablePseudoClassStates;
+                immutable = true;
+            }
+        }
+
+        /**
+         * Constructs a new key and initialises the hash if this key had already calculated it.
+         * @param pseudoClassStates
+         * @param font
+         * @return 
+         */
+        public Key newImmutableKey(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            double newFontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+            Key key = new Key(pseudoClassStates, newFontSize);
+            if (hash != Integer.MIN_VALUE && this.pseudoClassStates == pseudoClassStates && newFontSize == fontSize) {
+                key.hash = hash;
+            }
+            return key;
+        }
+
+        @Override
+        public String toString() {
             return Arrays.toString(pseudoClassStates) + ", " + fontSize;
         }
 
         public static int hashCode(double value) {
             long bits = Double.doubleToLongBits(value);
-            return (int)(bits ^ (bits >>> 32));
+            return (int) (bits ^ (bits >>> 32));
         }
 
         @Override
@@ -92,7 +135,7 @@ public final class StyleCacheEntry {
 
                 final int iMax = pseudoClassStates != null ? pseudoClassStates.length : 0;
 
-                for (int i=0; i<iMax; i++) {
+                for (int i = 0; i < iMax; i++) {
 
                     final Set<PseudoClass> states = pseudoClassStates[i];
                     if (states != null) {
@@ -106,13 +149,19 @@ public final class StyleCacheEntry {
         @Override
         public boolean equals(Object obj) {
 
-            if (obj == this) return true;
+            if (obj == this) {
+                return true;
+            }
 
-            if (obj == null || obj.getClass() != this.getClass()) return false;
+            if (obj == null || obj.getClass() != this.getClass()) {
+                return false;
+            }
 
             final Key other = (Key) obj;
 
-            if (this.hash != other.hash) return false;
+            if (this.hash != other.hash) {
+                return false;
+            }
 
             //
             // double == double is not reliable since a double is kind of
@@ -143,7 +192,7 @@ public final class StyleCacheEntry {
                 return false;
             }
 
-            for (int i=0; i<pseudoClassStates.length; i++) {
+            for (int i = 0; i < pseudoClassStates.length; i++) {
 
                 final Set<PseudoClass> this_pcs = pseudoClassStates[i];
                 final Set<PseudoClass> other_pcs = other.pseudoClassStates[i];
@@ -160,6 +209,6 @@ public final class StyleCacheEntry {
     }
 
 //    private final Reference<StyleCacheEntry> sharedCacheRef;
-    private Map<String,CalculatedValue> calculatedValues;
+    private Map<String, CalculatedValue> calculatedValues;
 //    private CalculatedValue  font; // for use in converting font relative sizes
 }
