@@ -87,7 +87,8 @@ final class CssStyleHelper {
     }
 
     /**
-     * Creates a new StyleHelper.
+     * Creates a new StyleHelper. This is called for a complete reapply of css
+     * in node which is trigged by things like changes in the scene graph.
      */
     static CssStyleHelper createStyleHelper(final Node node) {
 
@@ -528,6 +529,12 @@ final class CssStyleHelper {
      */
     private final PseudoClassState triggerStates;
 
+    /**
+     * Called by node when a pseudoClassState changes
+     *
+     * @param pseudoClass
+     * @return
+     */
     boolean pseudoClassStateChanged(PseudoClass pseudoClass) {
         boolean shouldTransition = triggerStates.contains(pseudoClass);
         if (shouldTransition) {
@@ -543,29 +550,45 @@ final class CssStyleHelper {
      */
     private void invalidatePseudoClassTransitionState() {
         if (transitionStateInvalid == false) {
-            invalidatePseudoClassTransitionState(this.node);
+            //only invalidate the whole tree down if it isn't already invalid
+            invalidatePseudoClassTransitionTree(this.node);
             transitionStateInvalid = true;
         }
     }
 
-    private void invalidatePseudoClassTransitionState(Node nodeToInvalidate) {
-        if (nodeToInvalidate instanceof Parent) {
-            List<Node> children = ((Parent) nodeToInvalidate).getChildren();
-            for (int n = 0, nMax = children.size(); n < nMax; n++) {
-                Node child = children.get(n);
-                if (child.styleHelper != null) {
-                    child.styleHelper.invalidatePseudoClassTransitionState();
-                } else {
-                    //go down until we find another node which has a styleHelper
-                    invalidatePseudoClassTransitionState(child);
+    private void invalidatePseudoClassTransitionTree(Node nodeToInvalidate) {
+        //When a node's transition tree is invalid, all its children are also invalid
+        if (nodeToInvalidate.styleHelper == null || !nodeToInvalidate.styleHelper.transitionStateInvalid) {
+            if (nodeToInvalidate.styleHelper != null) {
+                nodeToInvalidate.styleHelper.transitionTreeInvalid = true;
+            }
+            if (nodeToInvalidate instanceof Parent) {
+                List<Node> children = ((Parent) nodeToInvalidate).getChildren();
+                for (int n = 0, nMax = children.size(); n < nMax; n++) {
+                    Node child = children.get(n);
+                    if (child.styleHelper != null) {
+                        child.styleHelper.invalidatePseudoClassTransitionTree(child);
+                        child.styleHelper.transitionTreeInvalid = true;
+                    } else {
+                        //go down until we find another node which has a styleHelper
+                        invalidatePseudoClassTransitionTree(child);
+                    }
                 }
             }
         }
     }
 
     private PseudoClassState transitionStates[];
-    private PseudoClassState transitionState; 
+    private PseudoClassState transitionState;
+    /**
+     * Whether this node's transition state needs updating.
+     */
     private boolean transitionStateInvalid = true;
+    /**
+     * Whether the transition state of this node, or one or more of its parents
+     * needs to be updated to have a valid transitionState array for this pulse.
+     */
+    private boolean transitionTreeInvalid = true;
 
     /**
      * Dynamic pseudo-class state of the node and its parents. Only valid during
@@ -577,7 +600,6 @@ final class CssStyleHelper {
      * matched foo:blah bar { } is lost.
      */
     // TODO: this should work on Styleable, not Node
-
     private Set<PseudoClass>[] getTransitionStates() {
         // if cacheContainer is null, then CSS just doesn't apply to this node
         if (cacheContainer == null) {
@@ -587,7 +609,16 @@ final class CssStyleHelper {
         }
     }
 
-    private PseudoClassState getUpdatedTransitionState() {
+    /**
+     * transitionState is the intersection between this node's trigger states
+     * and its pseudo classes. It is shared with all this node's children as
+     * part of their array of transition states (transitionStates). The update
+     * method is called if we've marked the transition state as dirty (changes
+     * to either this node's pseudoclasses
+     *
+     * @return
+     */
+    private PseudoClassState updateAndGetTransitionState() {
         if (transitionState == null) {
             transitionState = new PseudoClassState();
             transitionStateInvalid = true;
@@ -596,18 +627,12 @@ final class CssStyleHelper {
             transitionState.clear();
             transitionState.addAll(node.pseudoClassStates);
             transitionState.retainAll(triggerStates);
+            transitionStateInvalid = false;
         }
         return transitionState;
     }
 
     private PseudoClassState[] getOrBuildTransitionStates() {
-
-//        int depth = 0;
-//        Node parent = node;
-//        while (parent != null) {
-//            depth += 1;
-//            parent = parent.getParent();
-//        }
         //
         // StyleHelper#triggerStates is the set of pseudo-classes that appear
         // in the style maps of this StyleHelper. Calculated values are
@@ -625,10 +650,11 @@ final class CssStyleHelper {
         // retainedStates[1..(states.length-1)] are the retainedStates for the
         // node's parents.
         //
-        if (transitionStateInvalid) {
+        if (transitionTreeInvalid) {
             updateTransitionStates();
         }
         if (transitionStates == null/*|| parentChanged */) {
+            //build the array for the first time
             Node curr = node.getParent();
 
             while (curr != null && curr.styleHelper == null) {
@@ -639,13 +665,13 @@ final class CssStyleHelper {
                 if (node.styleHelper != null) {
                     transitionStates = new PseudoClassState[parentsTransitionStates.length + 1];
                     System.arraycopy(parentsTransitionStates, 0, transitionStates, 1, parentsTransitionStates.length);
-                    transitionStates[0] = node.styleHelper.getUpdatedTransitionState();
+                    transitionStates[0] = node.styleHelper.updateAndGetTransitionState();
                 } else {
                     transitionStates = parentsTransitionStates;
                 }
             } else {
                 if (node.styleHelper != null) {
-                    transitionStates = new PseudoClassState[]{node.styleHelper.getUpdatedTransitionState()};
+                    transitionStates = new PseudoClassState[]{node.styleHelper.updateAndGetTransitionState()};
                 } else {
                     transitionStates = new PseudoClassState[0];
                 }
@@ -654,20 +680,22 @@ final class CssStyleHelper {
         return transitionStates;
     }
 
+    /**
+     * Goes from the current node up the scene graph validating as it goes until
+     * it finds a node with a valid transitionTree up to the root
+     */
     private void updateTransitionStates() {
-        if (this.transitionStateInvalid) {
-            Node curr = node;
-            while (curr != null) {
-                if (curr.styleHelper != null) {
-                    if (curr.styleHelper.transitionStateInvalid) {
-                        curr.styleHelper.getUpdatedTransitionState();
-                        curr.styleHelper.transitionStateInvalid = false;
-                    } else {
-                        return;
-                    }
+        Node curr = node;
+        while (curr != null) {
+            if (curr.styleHelper != null) {
+                if (curr.styleHelper.transitionTreeInvalid) {
+                    curr.styleHelper.updateAndGetTransitionState();
+                    curr.styleHelper.transitionTreeInvalid = false;
+                } else {
+                    return;
                 }
-                curr = curr.getParent();
             }
+            curr = curr.getParent();
         }
     }
 
