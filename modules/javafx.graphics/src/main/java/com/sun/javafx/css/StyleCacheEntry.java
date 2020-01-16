@@ -60,19 +60,61 @@ public final class StyleCacheEntry {
 
     public final static class Key {
 
-        private final Set<PseudoClass>[] pseudoClassStates;
-        private final double fontSize;
+        private Set<PseudoClass>[] pseudoClassStates;
+        private double fontSize;
         private int hash = Integer.MIN_VALUE;
+        private boolean immutable;
+
+        public Key() {
+            pseudoClassStates = new Set[0];
+            this.fontSize = Font.getDefault().getSize();
+        }
 
         public Key(Set<PseudoClass>[] pseudoClassStates, Font font) {
-
-            this.pseudoClassStates = new Set[pseudoClassStates.length];
-            for (int n=0; n<pseudoClassStates.length; n++) {
-                this.pseudoClassStates[n] = new PseudoClassState();
-                this.pseudoClassStates[n].addAll(pseudoClassStates[n]);
-            }
+            this.pseudoClassStates = pseudoClassStates;
             this.fontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+            immutable = true;
+        }
 
+        public Key(Set<PseudoClass>[] pseudoClassStates, double fontSize) {
+            this.pseudoClassStates = pseudoClassStates;
+            this.fontSize = fontSize;
+            immutable = true;
+        }
+
+        public void setKey(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            if (!immutable) {
+                this.pseudoClassStates = pseudoClassStates;
+                this.fontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+                hash = Integer.MIN_VALUE;
+            }
+        }
+
+        public void immutable() {
+            if (!immutable) {
+                Set<PseudoClass>[] immutablePseudoClassStates = new Set[pseudoClassStates.length];
+                for (int n = 0; n < pseudoClassStates.length; n++) {
+                    immutablePseudoClassStates[n] = new PseudoClassState();
+                    immutablePseudoClassStates[n].addAll(pseudoClassStates[n]);
+                }
+                pseudoClassStates = immutablePseudoClassStates;
+                immutable = true;
+            }
+        }
+
+        /**
+         * Constructs a new key and initialises the hash if this key had already calculated it.
+         * @param pseudoClassStates
+         * @param font
+         * @return 
+         */
+        public Key newImmutableKey(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            double newFontSize = font != null ? font.getSize() : Font.getDefault().getSize();
+            Key key = new Key(pseudoClassStates, newFontSize);
+            if (hash != Integer.MIN_VALUE && this.pseudoClassStates == pseudoClassStates && newFontSize == fontSize) {
+                key.hash = hash;
+            }
+            return key;
         }
 
         @Override public String toString() {

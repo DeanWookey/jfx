@@ -70,6 +70,7 @@ import com.sun.javafx.logging.PlatformLogger;
 import com.sun.javafx.logging.PlatformLogger.Level;
 
 import static com.sun.javafx.css.CalculatedValue.*;
+import com.sun.javafx.css.PseudoClassState;
 
 /**
  * The StyleHelper is a helper class used for applying CSS information to Nodes.
@@ -77,9 +78,11 @@ import static com.sun.javafx.css.CalculatedValue.*;
 final class CssStyleHelper {
 
     private static final PlatformLogger LOGGER = com.sun.javafx.util.Logging.getCSSLogger();
+    private final Node node;
 
-    private CssStyleHelper() {
+    private CssStyleHelper(Node node) {
         this.triggerStates = new PseudoClassState();
+        this.node = node;
     }
 
     /**
@@ -130,7 +133,7 @@ final class CssStyleHelper {
                 node.styleHelper.cacheContainer.fontSizeCache.clear();
             }
             node.styleHelper.cacheContainer.forceSlowpath = true;
-            node.styleHelper.triggerStates.addAll(triggerStates[0]);
+            node.styleHelper.addTriggerState(triggerStates[0]);
             node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
             updateParentTriggerStates(node, depth, triggerStates);
             return node.styleHelper;
@@ -169,8 +172,8 @@ final class CssStyleHelper {
 
         }
 
-        final CssStyleHelper helper = new CssStyleHelper();
-        helper.triggerStates.addAll(triggerStates[0]);
+        final CssStyleHelper helper = new CssStyleHelper(node);
+        helper.addTriggerState(triggerStates[0]);
 
         updateParentTriggerStates(node, depth, triggerStates);
 
@@ -208,10 +211,10 @@ final class CssStyleHelper {
                 // Create a StyleHelper for the parent, if necessary.
                 // TODO : check why calling createStyleHelper(parentNode) does not work here?
                 if (parentNode.styleHelper == null) {
-                    parentNode.styleHelper = new CssStyleHelper();
-                    parentNode.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(parentNode) ;
+                    parentNode.styleHelper = new CssStyleHelper(parentNode);
+                    parentNode.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(parentNode);
                 }
-                parentNode.styleHelper.triggerStates.addAll(triggerState);
+                parentNode.styleHelper.addTriggerState(triggerState);
 
             }
 
@@ -219,6 +222,13 @@ final class CssStyleHelper {
         }
 
     }
+
+    private void addTriggerState(PseudoClassState triggerState) {
+        if (triggerStates.addAll(triggerState)) {
+            invalidatePseudoClassTransitionState();
+        }
+    }
+
     //
     // return true if the fontStyleableProperty's origin is USER
     //
@@ -411,6 +421,18 @@ final class CssStyleHelper {
 
         }
 
+        StyleCacheEntry.Key reusableKey = new StyleCacheEntry.Key();
+
+        private void addFontSizeCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font, CalculatedValue calculatedValue) {
+            StyleCacheEntry.Key key = reusableKey.newImmutableKey(pseudoClassStates, font);
+            fontSizeCache.put(key, calculatedValue);
+        }
+
+        private CalculatedValue getFontSizeCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font) {
+            reusableKey.setKey(pseudoClassStates, font);
+            return fontSizeCache.get(reusableKey);
+        }
+
         private StyleMap getStyleMap(Styleable styleable) {
             if (styleable != null) {
                 SubScene subScene =  (styleable instanceof Node) ? ((Node) styleable).getSubScene() : null;
@@ -498,11 +520,67 @@ final class CssStyleHelper {
      * *
      * Called "triggerStates" since they would trigger a CSS update.
      */
-    private PseudoClassState triggerStates = new PseudoClassState();
+    private final PseudoClassState triggerStates;
 
+    /**
+     * Called by node when a pseudoClassState changes
+     *
+     * @param pseudoClass
+     * @return
+     */
     boolean pseudoClassStateChanged(PseudoClass pseudoClass) {
-        return triggerStates.contains(pseudoClass);
+        boolean shouldTransition = triggerStates.contains(pseudoClass);
+        if (shouldTransition) {
+            invalidatePseudoClassTransitionState();
+        }
+        return shouldTransition;
     }
+
+    /**
+     * Invalidate everything down till we hit an invalid node. We should never
+     * have a state where something is valid and its parents are invalid. That's
+     * because we only set a node to valid when its parent is valid.
+     */
+    private void invalidatePseudoClassTransitionState() {
+        if (transitionStateInvalid == false) {
+            //only invalidate the whole tree down if it isn't already invalid
+            invalidatePseudoClassTransitionTree(this.node);
+            transitionStateInvalid = true;
+        }
+    }
+
+    private void invalidatePseudoClassTransitionTree(Node nodeToInvalidate) {
+        //When a node's transition tree is invalid, all its children are also invalid
+        if (nodeToInvalidate.styleHelper == null || !nodeToInvalidate.styleHelper.transitionStateInvalid) {
+            if (nodeToInvalidate.styleHelper != null) {
+                nodeToInvalidate.styleHelper.transitionTreeInvalid = true;
+            }
+            if (nodeToInvalidate instanceof Parent) {
+                List<Node> children = ((Parent) nodeToInvalidate).getChildren();
+                for (int n = 0, nMax = children.size(); n < nMax; n++) {
+                    Node child = children.get(n);
+                    if (child.styleHelper != null) {
+                        child.styleHelper.invalidatePseudoClassTransitionTree(child);
+                    } else {
+                        //go down until we find another node which has a styleHelper
+                        invalidatePseudoClassTransitionTree(child);
+                    }
+                }
+            }
+        }
+    }
+
+    private PseudoClassState transitionStates[];
+    private PseudoClassState transitionState;
+    /**
+     * Whether this node's transition state needs updating.
+     */
+    private boolean transitionStateInvalid = true;
+    /**
+     * Whether the transition state of this node, or one or more of its parents
+     * needs to be updated to have a valid transitionState array for this pulse.
+     */
+    private boolean transitionTreeInvalid = true;
 
     /**
      * Dynamic pseudo-class state of the node and its parents.
@@ -514,18 +592,39 @@ final class CssStyleHelper {
      * matched foo:blah bar { } is lost.
      */
     // TODO: this should work on Styleable, not Node
-    private Set<PseudoClass>[] getTransitionStates(final Node node) {
-
+    private Set<PseudoClass>[] getTransitionStates() {
         // if cacheContainer is null, then CSS just doesn't apply to this node
-        if (cacheContainer == null) return null;
-
-        int depth = 0;
-        Node parent = node;
-        while (parent != null) {
-            depth += 1;
-            parent = parent.getParent();
+        if (cacheContainer == null) {
+            return null;
+        } else {
+            return getOrBuildTransitionStates();
         }
+    }
 
+    /**
+     * transitionState is the intersection between this node's trigger states
+     * and its pseudo classes. It is shared with all this node's children as
+     * part of their array of transition states (transitionStates). The update
+     * method is called if we've marked the transition state as dirty (changes
+     * to either this node's pseudoclasses
+     *
+     * @return
+     */
+    private PseudoClassState updateAndGetTransitionState() {
+        if (transitionState == null) {
+            transitionState = new PseudoClassState();
+            transitionStateInvalid = true;
+        }
+        if (transitionStateInvalid) {
+            transitionState.clear();
+            transitionState.addAll(node.pseudoClassStates);
+            transitionState.retainAll(triggerStates);
+            transitionStateInvalid = false;
+        }
+        return transitionState;
+    }
+
+    private PseudoClassState[] getOrBuildTransitionStates() {
         //
         // StyleHelper#triggerStates is the set of pseudo-classes that appear
         // in the style maps of this StyleHelper. Calculated values are
@@ -537,35 +636,59 @@ final class CssStyleHelper {
         // .foo:hover { -fx-fill: red; } then only the hover state matters
         // but the transtion state could be [hover, focused]
         //
-        final Set<PseudoClass>[] retainedStates = new PseudoClassState[depth];
-
         //
         // Note Well: The array runs from leaf to root. That is,
         // retainedStates[0] is the pseudo-class state for node and
         // retainedStates[1..(states.length-1)] are the retainedStates for the
         // node's parents.
         //
-
-        int count = 0;
-        parent = node;
-        while (parent != null) { // This loop traverses through all ancestors till root
-            final CssStyleHelper helper = (parent instanceof Node) ? parent.styleHelper : null;
-            if (helper != null) {
-                final Set<PseudoClass> pseudoClassState = parent.pseudoClassStates;
-                retainedStates[count] = new PseudoClassState();
-                retainedStates[count].addAll(pseudoClassState);
-                // retainAll method takes the intersection of pseudoClassState and helper.triggerStates
-                retainedStates[count].retainAll(helper.triggerStates);
-                count += 1;
-            }
-            parent = parent.getParent();
+        if (transitionTreeInvalid) {
+            updateTransitionStates();
         }
+        if (transitionStates == null/*|| parentChanged */) {
+            //build the array for the first time
+            Node curr = node.getParent();
 
-        final Set<PseudoClass>[] transitionStates = new PseudoClassState[count];
-        System.arraycopy(retainedStates, 0, transitionStates, 0, count);
-
+            while (curr != null && curr.styleHelper == null) {
+                curr = curr.getParent();
+            }
+            if (curr != null && curr.styleHelper != null) {
+                PseudoClassState[] parentsTransitionStates = curr.styleHelper.getOrBuildTransitionStates();
+                if (node.styleHelper != null) {
+                    transitionStates = new PseudoClassState[parentsTransitionStates.length + 1];
+                    System.arraycopy(parentsTransitionStates, 0, transitionStates, 1, parentsTransitionStates.length);
+                    transitionStates[0] = node.styleHelper.updateAndGetTransitionState();
+                } else {
+                    transitionStates = parentsTransitionStates;
+                }
+            } else {
+                if (node.styleHelper != null) {
+                    transitionStates = new PseudoClassState[]{node.styleHelper.updateAndGetTransitionState()};
+                } else {
+                    transitionStates = new PseudoClassState[0];
+                }
+            }
+        }
         return transitionStates;
+    }
 
+    /**
+     * Goes from the current node up the scene graph validating as it goes until
+     * it finds a node with a valid transitionTree up to the root
+     */
+    private void updateTransitionStates() {
+        Node curr = node;
+        while (curr != null) {
+            if (curr.styleHelper != null) {
+                if (curr.styleHelper.transitionTreeInvalid) {
+                    curr.styleHelper.updateAndGetTransitionState();
+                    curr.styleHelper.transitionTreeInvalid = false;
+                } else {
+                    return;
+                }
+            }
+            curr = curr.getParent();
+        }
     }
 
     /**
@@ -611,20 +734,20 @@ final class CssStyleHelper {
 
         }
 
-        final Set<PseudoClass>[] transitionStates = getTransitionStates(node);
+        final Set<PseudoClass>[] transitionStates = getTransitionStates();
         CalculatedValue cachedFont = getCachedFont(node, styleMap, transitionStates);
 
         final Font fontForRelativeSizes = (Font)cachedFont.getValue();
 
-        final StyleCacheEntry.Key cacheEntryKey = new StyleCacheEntry.Key(transitionStates, fontForRelativeSizes);
-        StyleCacheEntry cacheEntry = sharedCache.getStyleCacheEntry(cacheEntryKey);
+        //final StyleCacheEntry.Key cacheEntryKey = new StyleCacheEntry.Key(transitionStates, fontForRelativeSizes);
+        StyleCacheEntry cacheEntry = sharedCache.getStyleCacheEntry(transitionStates, fontForRelativeSizes);
 
         // if the cacheEntry already exists, take the fastpath
         final boolean fastpath = cacheEntry != null;
 
         if (cacheEntry == null) {
             cacheEntry = new StyleCacheEntry();
-            sharedCache.addStyleCacheEntry(cacheEntryKey, cacheEntry);
+            sharedCache.addStyleCacheEntry(transitionStates, fontForRelativeSizes, cacheEntry);
         }
 
         final List<CssMetaData<? extends Styleable,  ?>> styleables = node.getCssMetaData();

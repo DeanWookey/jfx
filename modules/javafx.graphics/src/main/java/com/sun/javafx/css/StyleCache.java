@@ -27,6 +27,9 @@ package com.sun.javafx.css;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import javafx.css.PseudoClass;
+import javafx.scene.text.Font;
 
 /**
  * A cache to store values from lookup.
@@ -88,6 +91,17 @@ public final class StyleCache {
         Thread.dumpStack();
         entries.clear();
     }
+    
+    StyleCacheEntry.Key reusableKey = new StyleCacheEntry.Key();
+    
+    public StyleCacheEntry getStyleCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font) {
+        reusableKey.setKey(pseudoClassStates, font);
+        StyleCacheEntry entry = null;
+        if (entries != null) {
+            entry = entries.get(reusableKey);
+        }
+        return entry;
+    }
 
     public StyleCacheEntry getStyleCacheEntry(StyleCacheEntry.Key key) {
 
@@ -96,6 +110,14 @@ public final class StyleCache {
             entry = entries.get(key);
         }
         return entry;
+    }
+    
+    public void addStyleCacheEntry(Set<PseudoClass>[] pseudoClassStates, Font font, StyleCacheEntry entry) {
+        StyleCacheEntry.Key key = reusableKey.newImmutableKey(pseudoClassStates, font);
+        if (entries == null) {
+            entries = new HashMap<>(5);
+        }
+        entries.put(key, entry);
     }
 
     public void addStyleCacheEntry(StyleCacheEntry.Key key, StyleCacheEntry entry) {
