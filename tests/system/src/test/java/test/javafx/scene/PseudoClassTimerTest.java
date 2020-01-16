@@ -136,7 +136,7 @@ public class PseudoClassTimerTest {
         
         // Measure the time taken to perform 100 layouts while toggling the
         // pseudoclass state of the root node.
-        final long maxLayouts = 100;
+        final long maxLayouts = 500;
         Platform.runLater(() -> {
             rootPane.getScene().addPreLayoutPulseListener(() -> {
                 startTime.setValue(System.currentTimeMillis());

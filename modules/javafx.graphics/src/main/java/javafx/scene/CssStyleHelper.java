@@ -134,7 +134,7 @@ final class CssStyleHelper {
             }
             node.styleHelper.cacheContainer.forceSlowpath = true;
             node.styleHelper.addTriggerState(triggerStates[0]);
-            node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
+            //node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
             updateParentTriggerStates(node, depth, triggerStates);
             return node.styleHelper;
 
@@ -329,6 +329,7 @@ final class CssStyleHelper {
             return true;
         }
 
+        node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
         CssStyleHelper parentHelper = getStyleHelper(node.styleHelper.firstStyleableAncestor);
 
         if (parentHelper != null && parentHelper.cacheContainer != null) {
