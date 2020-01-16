@@ -172,4 +172,3 @@ public final class PseudoClassState extends BitSet<PseudoClass> {
             new ArrayList<PseudoClass>();
 
 }
-
