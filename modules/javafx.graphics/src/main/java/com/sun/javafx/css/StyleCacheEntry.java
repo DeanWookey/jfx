@@ -117,8 +117,7 @@ public final class StyleCacheEntry {
             return key;
         }
 
-        @Override
-        public String toString() {
+        @Override public String toString() {
             return Arrays.toString(pseudoClassStates) + ", " + fontSize;
         }
 
@@ -149,19 +148,13 @@ public final class StyleCacheEntry {
         @Override
         public boolean equals(Object obj) {
 
-            if (obj == this) {
-                return true;
-            }
+            if (obj == this) return true;
 
-            if (obj == null || obj.getClass() != this.getClass()) {
-                return false;
-            }
+            if (obj == null || obj.getClass() != this.getClass()) return false;
 
             final Key other = (Key) obj;
 
-            if (this.hash != other.hash) {
-                return false;
-            }
+            if (this.hash != other.hash) return false;
 
             //
             // double == double is not reliable since a double is kind of
