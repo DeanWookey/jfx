@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -40,10 +40,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import test.util.Util;
-import junit.framework.Assert;
 import org.junit.Test;
 import org.junit.AfterClass;
-import static org.junit.Assert.assertFalse;
 import org.junit.BeforeClass;
 import static org.junit.Assert.assertTrue;
 import javafx.beans.property.LongProperty;
@@ -51,21 +49,12 @@ import javafx.beans.property.SimpleLongProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.BooleanProperty;
 import javafx.css.PseudoClass;
+import static org.junit.Assert.assertEquals;
 
 /**
- * This test is based on the test case reported in JDK-8209830
- *
- * Redundant CSS Re-application was avoided in JDK-8193445. It results in faster
- * application of CSS on Controls (Nodes). In turn, resulting in improved Node
- * creation/addition time to a Scene.
- *
- * The goal of this test is *NOT* to measure absolute performance, but to show
- * creating and adding 500 Nodes to a scene does not take more than a particular
- * threshold of time.
- *
- * The selected thresold is larger than actual observed time. It is not a
- * benchmark value. It is good enough to catch the regression in performance, if
- * any.
+ * TODO TODO TODO: comment + link this file to a JDK issue number.
+ * 
+ * 
  */
 public class PseudoClassTimerTest {
 
@@ -90,18 +79,18 @@ public class PseudoClassTimerTest {
     @BeforeClass
     public static void initFX() throws Exception {
         startupLatch = new CountDownLatch(1);
-        new Thread(() -> Application.launch(PseudoClassTimerTest.TestApp.class, (String[]) null)).start();
+        new Thread(() -> Application.launch(TestApp.class, (String[]) null)).start();
 
         assertTrue("Timeout waiting for FX runtime to start", startupLatch.await(15, TimeUnit.SECONDS));
     }
     static PseudoClass ROOT_PSEUDO_CLASS = PseudoClass.getPseudoClass("root");
-    static ArrayList<PseudoClass> randomPseudoClass = new ArrayList<>();
+    static final ArrayList<PseudoClass> RANDOM_PSEUDO_CLASSES = new ArrayList<>();
 
     static {
         for (int i = 0; i < 100; i++) {
-            randomPseudoClass.add(PseudoClass.getPseudoClass(("random" + i)));
+            RANDOM_PSEUDO_CLASSES.add(PseudoClass.getPseudoClass(("random" + i)));
         }
-        Collections.reverse(randomPseudoClass);
+        Collections.reverse(RANDOM_PSEUDO_CLASSES);
     }
 
     @Test
@@ -109,7 +98,6 @@ public class PseudoClassTimerTest {
         System.out.println("Is app thread: " + Platform.isFxApplicationThread());
         ArrayList<HBox> allNodes = new ArrayList<>();
         Util.runAndWait(() -> {
-            String x = "";
             // Compute time for adding 500 Nodes
             long startTime = System.currentTimeMillis();
 
@@ -119,7 +107,7 @@ public class PseudoClassTimerTest {
                 final HBox h = hbox;
                 h.getStyleClass().add("changing");
                 allNodes.add(h);
-                for (PseudoClass s : randomPseudoClass) {
+                for (PseudoClass s : RANDOM_PSEUDO_CLASSES) {
                     h.pseudoClassStateChanged(s, true);
                 }
                 h.setPadding(new Insets(1));
@@ -140,34 +128,60 @@ public class PseudoClassTimerTest {
         LongProperty totalTime = new SimpleLongProperty(0);
         LongProperty layouts = new SimpleLongProperty(0);
         BooleanProperty toggle = new SimpleBooleanProperty(false);
-        ArrayList<Long> time = new ArrayList<>();
+        final Runtime runtime = Runtime.getRuntime();
+        System.out.println("START Free: "+runtime.freeMemory()/1024+" Max: "+runtime.maxMemory()/1024+" Total: "+runtime.totalMemory()/1024);
+        CountDownLatch latch = new CountDownLatch(1);
+        LongProperty numGC = new SimpleLongProperty(0);
+        LongProperty prevFree = new SimpleLongProperty(runtime.freeMemory());
+        
+        // Measure the time taken to perform 100 layouts while toggling the
+        // pseudoclass state of the root node.
+        final long maxLayouts = 100;
         Platform.runLater(() -> {
-
             rootPane.getScene().addPreLayoutPulseListener(() -> {
                 startTime.setValue(System.currentTimeMillis());
             });
             rootPane.getScene().addPostLayoutPulseListener(() -> {
-                long layoutTime = System.currentTimeMillis() - startTime.getValue();
-                totalTime.setValue(totalTime.getValue() + layoutTime);
-                layouts.setValue(layouts.getValue() + 1);
-                rootPane.pseudoClassStateChanged(ROOT_PSEUDO_CLASS, !toggle.getValue());
-                toggle.setValue(!toggle.getValue());
-                //for (HBox h : allNodes) {
-                //    h.pseudoClassStateChanged(ROOT_PSEUDO_CLASS, toggle.getValue());
-                //}
-                //time.add(layoutTime);
-                Platform.requestNextPulse();
+                if(layouts.get() < maxLayouts) {
+                    long layoutTime = System.currentTimeMillis() - startTime.getValue();
+                    totalTime.setValue(totalTime.getValue() + layoutTime);
+                    layouts.set(layouts.getValue() + 1);
+
+                    long free = runtime.freeMemory();
+                    //System.out.println("Free: "+free+" Max: "+max+" Total: "+total);
+                    if(free > prevFree.get()) numGC.set(numGC.get()+1);
+                    prevFree.set(free);
+
+                    // Force an update to pseudo-class states down the chain of nodes
+                    rootPane.pseudoClassStateChanged(ROOT_PSEUDO_CLASS, !toggle.getValue());
+                    toggle.setValue(!toggle.getValue());
+//                    for (HBox h : allNodes) {
+//                        h.pseudoClassStateChanged(ROOT_PSEUDO_CLASS, toggle.getValue());
+//                    }
+                
+                    Platform.requestNextPulse();
+                } else {
+                    latch.countDown();
+                }
             });
         });
-        Thread.sleep(100000);
-            //StringBuilder sb = new StringBuilder();
-           // for (int i = 0; i < time.size(); i++) {
-           //     sb.append(time.get(i)).append(" ");
-            //}
-            //System.out.println(sb.toString());
-            System.out.print("Layouts: " + layouts.getValue() + " Average " + totalTime.getValue() / (double) (layouts.getValue()));
-        Thread.sleep(1000);
-
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("End Free: "+runtime.freeMemory()/1024+" Max: "+runtime.maxMemory()/1024+" Total: "+runtime.totalMemory()/1024);
+        System.gc();
+        System.gc();
+        System.out.println("End Free: "+runtime.freeMemory()/1024+" Max: "+runtime.maxMemory()/1024+" Total: "+runtime.totalMemory()/1024);
+        System.out.println("Approximate no. garbage collections: " + numGC.get());
+        System.out.println(String.format("Total: %dms\tAverage: %.2fms", totalTime.getValue(), totalTime.getValue() / (double) (layouts.getValue())));
+        //System.out.println("Created: " + com.sun.javafx.css.PseudoClassState.NUM_CREATED.get());      
+        
+        assertEquals("Did not finish 100 layouts in under 10 seconds", layouts.get(), maxLayouts);
+        // Should be around 300ms to 1660ms depending on hardware after changes.
+        // Previously around 2700ms to 4000ms.
+        assertTrue("Toggling PseudoClasses takes more than 2500ms", totalTime.getValue() < 2500.0f); 
     }
 
     @AfterClass

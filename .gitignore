@@ -11,6 +11,11 @@ testbin/
 **/Ensemble8/lib/
 **/Ensemble8/src/generated/resources/ensemble/search/index/write.lock
 **/nbproject/private/
+.nb-gradle-properties
+
+# Ignore error logs
+**/hs_err_pid*.log
+**/replay_pid*.log
 
 # Ignore webrevs
 /webrev/
