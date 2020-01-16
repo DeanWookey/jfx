@@ -1640,8 +1640,7 @@ final class CssStyleHelper {
         if (node.styleHelper != this) {
             return node.styleHelper.getCachedFont(node, styleMap, transitionStates);
         }
-        final StyleCacheEntry.Key fontCacheKey = new StyleCacheEntry.Key(transitionStates, Font.getDefault());
-        CalculatedValue cachedFont = cacheContainer.fontSizeCache.get(fontCacheKey);
+        CalculatedValue cachedFont = cacheContainer.getFontSizeCacheEntry(transitionStates, Font.getDefault());
 
         if (cachedFont == null) {
 
@@ -1654,7 +1653,7 @@ final class CssStyleHelper {
                 }
                 if (parent instanceof Node && (((Node)parent).styleHelper != null && ((Node)parent).styleHelper.cacheContainer != null)) {
                     Node parentNode = (Node)parent;
-                    Set<PseudoClass>[] parentTransitionStates = parentNode.styleHelper.getTransitionStates(parentNode);
+                    Set<PseudoClass>[] parentTransitionStates = parentNode.styleHelper.getTransitionStates();
                     StyleMap parentStyleMap = parentNode.styleHelper.getStyleMap(parentNode);
                     cachedFont = parentNode.styleHelper.getCachedFont(parentNode, parentStyleMap, parentTransitionStates);
                 } else {
@@ -1663,7 +1662,7 @@ final class CssStyleHelper {
             }
             if (cachedFont == null) cachedFont = new CalculatedValue(Font.getDefault(), null, false);
 
-            cacheContainer.fontSizeCache.put(fontCacheKey,cachedFont);
+            cacheContainer.addFontSizeCacheEntry(transitionStates, Font.getDefault(),cachedFont);
         }
         return cachedFont;
     }
@@ -1674,7 +1673,7 @@ final class CssStyleHelper {
         if (node.styleHelper == null || node.styleHelper.cacheContainer == null) {
             return getFont(styleable.getStyleableParent());
         }
-        Set<PseudoClass>[] transitionStates = node.styleHelper.getTransitionStates(node);
+        Set<PseudoClass>[] transitionStates = node.styleHelper.getTransitionStates();
         StyleMap styleMap = node.styleHelper.getStyleMap(node);
         return getCachedFont((Node)node, styleMap, transitionStates);
     }
