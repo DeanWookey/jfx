@@ -38,7 +38,7 @@ import java.util.Map;
  * pseudo-class state of a {@code Node}.
  */
 public final class PseudoClassState extends BitSet<PseudoClass> {
-    
+
     /** Create an empty set of PseudoClass */
     public PseudoClassState() {
         super();
