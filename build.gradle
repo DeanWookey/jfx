@@ -1571,10 +1571,10 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
                 def repositoryUsername = project.hasProperty('repositoryUsername') ? project.getProperty('repositoryUsername') : ""
                 def repositoryPassword = project.hasProperty('repositoryPassword') ? project.getProperty('repositoryPassword') : ""
                 url repositoryUrl
-                credentials {
-                   username repositoryUsername
-                   password repositoryPassword
-                }
+                //credentials {
+                //   username repositoryUsername
+                //   password repositoryPassword
+                //}
             }
         }
     }

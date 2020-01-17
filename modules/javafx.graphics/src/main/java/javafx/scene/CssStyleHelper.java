@@ -134,7 +134,6 @@ final class CssStyleHelper {
             }
             node.styleHelper.cacheContainer.forceSlowpath = true;
             node.styleHelper.addTriggerState(triggerStates[0]);
-            //node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
             updateParentTriggerStates(node, depth, triggerStates);
             return node.styleHelper;
 
@@ -328,7 +327,7 @@ final class CssStyleHelper {
         if (parent == null) {
             return true;
         }
-
+        //update ancestor since this node may have changed positions in the scene graph (JDK-8237469)
         node.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(node);
         CssStyleHelper parentHelper = getStyleHelper(node.styleHelper.firstStyleableAncestor);
 
