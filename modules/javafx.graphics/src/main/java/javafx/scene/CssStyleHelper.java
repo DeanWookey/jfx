@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -83,12 +83,6 @@ final class CssStyleHelper {
 
     private CssStyleHelper(Node node) {
         this.triggerStates = new PseudoClassState();
-        triggerStates.addListener(new SetChangeListener<>() {
-            @Override
-            public void onChanged(SetChangeListener.Change<? extends PseudoClass> change) {
-                invalidatePseudoClassTransitionState();
-            }
-        });
         this.node = node;
     }
 
@@ -140,7 +134,7 @@ final class CssStyleHelper {
                 node.styleHelper.cacheContainer.fontSizeCache.clear();
             }
             node.styleHelper.cacheContainer.forceSlowpath = true;
-            node.styleHelper.triggerStates.addAll(triggerStates[0]);
+            node.styleHelper.addTriggerState(triggerStates[0]);
 
             updateParentTriggerStates(node, depth, triggerStates);
             return node.styleHelper;
@@ -180,7 +174,7 @@ final class CssStyleHelper {
         }
 
         final CssStyleHelper helper = new CssStyleHelper(node);
-        helper.triggerStates.addAll(triggerStates[0]);
+        helper.addTriggerState(triggerStates[0]);
 
         updateParentTriggerStates(node, depth, triggerStates);
 
@@ -221,13 +215,19 @@ final class CssStyleHelper {
                     parentNode.styleHelper = new CssStyleHelper(parentNode);
                     parentNode.styleHelper.firstStyleableAncestor = findFirstStyleableAncestor(parentNode);
                 }
-                parentNode.styleHelper.triggerStates.addAll(triggerState);
+                parentNode.styleHelper.addTriggerState(triggerState);
 
             }
 
             parent = parent.getStyleableParent();
         }
 
+    }
+
+    private void addTriggerState(PseudoClassState triggerState) {
+        if (triggerStates.addAll(triggerState)) {
+            invalidatePseudoClassTransitionState();
+        }
     }
 
     //
@@ -529,7 +529,7 @@ final class CssStyleHelper {
      * in this hash set are ignored. * Called "triggerStates" since they would
      * trigger a CSS update.
      */
-    private PseudoClassState triggerStates = new PseudoClassState();
+    private final PseudoClassState triggerStates;
 
     boolean pseudoClassStateChanged(PseudoClass pseudoClass) {
         boolean shouldTransition = triggerStates.contains(pseudoClass);
@@ -567,7 +567,7 @@ final class CssStyleHelper {
     }
 
     private PseudoClassState transitionStates[];
-    private PseudoClassState transitionState; //used by children
+    private PseudoClassState transitionState; 
     private boolean transitionStateInvalid = true;
 
     /**
@@ -580,7 +580,6 @@ final class CssStyleHelper {
      * matched foo:blah bar { } is lost.
      */
     // TODO: this should work on Styleable, not Node
-    Set<PseudoClass>[] retainedStates;
 
     private Set<PseudoClass>[] getTransitionStates() {
         // if cacheContainer is null, then CSS just doesn't apply to this node
